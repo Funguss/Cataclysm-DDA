@@ -54,7 +54,6 @@
 struct construction_category;
 
 void cancel_aim_processing();
-
 //Generic activity: maximum search distance for zones, constructions, etc.
 const int ACTIVITY_SEARCH_DISTANCE = 60;
 
@@ -1469,7 +1468,8 @@ static activity_reason_info can_do_activity_there( const activity_id &act, playe
         return activity_reason_info::fail( NO_ZONE );
     }
     if( act == ACT_TIDY_UP ) {
-        if( mgr.has_near( z_loot_unsorted, g->m.getabs( src_loc ), distance ) ) {
+        if( mgr.has_near( z_loot_unsorted, g->m.getabs( src_loc ), distance ) ||
+            mgr.has_near( z_camp_storage, g->m.getabs( src_loc ), distance ) ) {
             return activity_reason_info::ok( CAN_DO_FETCH );
         }
         return activity_reason_info::fail( NO_ZONE );
@@ -1557,6 +1557,22 @@ static activity_reason_info can_do_activity_there( const activity_id &act, playe
     return activity_reason_info::fail( NO_ZONE );
 }
 
+static void add_basecamp_storage_to_loot_zone_list( zone_manager &mgr, const tripoint &src_loc,
+        player &p, std::vector<tripoint> &loot_zone_spots, std::vector<tripoint> &combined_spots )
+{
+    if( npc *const guy = dynamic_cast<npc *>( &p ) ) {
+        if( guy->is_assigned_to_camp() &&
+            mgr.has_near( z_camp_storage, g->m.getabs( src_loc ), ACTIVITY_SEARCH_DISTANCE ) ) {
+            std::unordered_set<tripoint> bc_storage_set = mgr.get_near( zone_type_id( "CAMP_STORAGE" ),
+                    g->m.getabs( src_loc ), ACTIVITY_SEARCH_DISTANCE );
+            for( const tripoint &elem : bc_storage_set ) {
+                loot_zone_spots.push_back( g->m.getlocal( elem ) );
+                combined_spots.push_back( g->m.getlocal( elem ) );
+            }
+        }
+    }
+}
+
 static std::vector<std::tuple<tripoint, itype_id, int>> requirements_map( player &p,
         const int distance = ACTIVITY_SEARCH_DISTANCE )
 {
@@ -1609,6 +1625,7 @@ static std::vector<std::tuple<tripoint, itype_id, int>> requirements_map( player
             combined_spots.push_back( elem );
         }
     }
+    add_basecamp_storage_to_loot_zone_list( mgr, src_loc, p, loot_spots, combined_spots );
     // if the requirements arent available, then stop.
     if( !are_requirements_nearby( pickup_task ? loot_spots : combined_spots, things_to_fetch_id, p,
                                   activity_to_restore, pickup_task, src_loc ) ) {
@@ -2552,6 +2569,8 @@ static bool generic_multi_activity_check_requirement( player &p, const activity_
         for( const tripoint &elem : g->m.points_in_radius( src_loc, PICKUP_RANGE - 1 ) ) {
             combined_spots.push_back( elem );
         }
+        add_basecamp_storage_to_loot_zone_list( mgr, src_loc, p, loot_zone_spots, combined_spots );
+
         if( ( reason == NO_COMPONENTS || reason == NO_COMPONENTS_PREREQ ||
               reason == NO_COMPONENTS_PREREQ_2 ) &&
             act_id == ACT_MULTIPLE_CONSTRUCTION ) {
